@@ -1,0 +1,5 @@
+treaty_id,contract_name,ceding_company_code,participation_pct,start_date,end_date
+T001,Northwind Property QS 2026,7310,20.0,2026-01-01,2026-12-31
+T002,Bluefield Casualty QS 2026,4475,25.0,2026-01-01,2026-12-31
+T003,Harbor Point Marine QS 2026,6120,20.0,2026-01-01,2026-12-31
+T004,Crestline Motor QS 2026,5583,30.0,2026-04-01,2027-03-31

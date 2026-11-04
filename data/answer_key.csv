@@ -1,0 +1,51 @@
+txn_id,true_root_cause,note
+10434,Company code not mapped,4477 is a typo of valid code 4475
+10435,Company code not mapped,7311 is a typo of valid code 7310
+10436,Company code not mapped,7311 is a typo of valid code 7310
+10437,Company code not mapped,4478 is a typo of valid code 4475
+10438,Company code not mapped,7312 is a typo of valid code 7310
+10439,Company code not mapped,5586 is a typo of valid code 5583
+10440,Company code not mapped,5586 is a typo of valid code 5583
+10441,Company code not mapped,4476 is a typo of valid code 4475
+10442,Company code not mapped,4478 is a typo of valid code 4475
+10443,Timing difference,outbound present in next cycle
+10444,Timing difference,outbound present in next cycle
+10445,Timing difference,outbound present in next cycle
+10446,Timing difference,outbound present in next cycle
+10447,Timing difference,outbound present in next cycle
+10448,Timing difference,outbound present in next cycle
+10449,Timing difference,outbound present in next cycle
+10450,Timing difference,outbound present in next cycle
+10451,Timing difference,outbound present in next cycle
+10452,Variance just beyond tolerance,small rounding variance > $0.90
+10453,Variance just beyond tolerance,small rounding variance > $0.90
+10454,Variance just beyond tolerance,small rounding variance > $0.90
+10455,Variance just beyond tolerance,small rounding variance > $0.90
+10456,Variance just beyond tolerance,small rounding variance > $0.90
+10457,Variance just beyond tolerance,small rounding variance > $0.90
+10458,Variance just beyond tolerance,small rounding variance > $0.90
+10459,Variance just beyond tolerance,small rounding variance > $0.90
+10460,Variance just beyond tolerance,small rounding variance > $0.90
+10461,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10462,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10463,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10464,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10465,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10466,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10467,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10468,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10469,Treaty amendment not reflected,Endorsement 1 changed share to 15%; treaty report still 20%
+10470,Duplicate posting,two outbound rows for one txn
+10471,Duplicate posting,two outbound rows for one txn
+10472,Duplicate posting,two outbound rows for one txn
+10473,Duplicate posting,two outbound rows for one txn
+10474,Duplicate posting,two outbound rows for one txn
+10475,Duplicate posting,two outbound rows for one txn
+10476,Duplicate posting,two outbound rows for one txn
+10477,Duplicate posting,two outbound rows for one txn
+10478,Duplicate posting,two outbound rows for one txn
+10479,Needs analyst,"unexplained variance, no supporting signal"
+10480,Needs analyst,"unexplained variance, no supporting signal"
+10481,Needs analyst,"unexplained variance, no supporting signal"
+10482,Needs analyst,"unexplained variance, no supporting signal"
+10483,Needs analyst,"unexplained variance, no supporting signal"

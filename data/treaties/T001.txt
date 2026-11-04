@@ -1,0 +1,20 @@
+QUOTA SHARE REINSURANCE AGREEMENT
+Northwind Property QS 2026 | Treaty Reference: T001
+
+Article 1: Parties
+This Agreement is made between Northwind Mutual (the "Company", ceding company code 7310) and the Reinsurers subscribing hereto.
+
+Article 2: Period
+This Agreement shall apply to policies incepting on or after 1 January 2026 and on or before 31 December 2026.
+
+Article 3: Business Covered
+Property business written by the Company, including residential and commercial fire and allied perils.
+
+Article 4: Reinsurer's Share
+The Reinsurers shall accept a 20% quota share of all business ceded under this Agreement.
+
+Article 5: Premium and Commission
+The Company shall cede premium in proportion to the Reinsurers' share. The Reinsurers shall allow a ceding commission of 30%.
+
+Article 6: Accounts
+Accounts shall be rendered quarterly. Amounts posted after the quarter cut-off shall be included in the following cycle's account.
