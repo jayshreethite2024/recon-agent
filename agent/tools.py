@@ -12,7 +12,7 @@ import duckdb
 DATA = Path(__file__).resolve().parent.parent / "data"
 db = duckdb.connect()   # in-memory database; reads the CSVs directly
 
-for table in ["inbound", "outbound", "error", "retention", "treaty_report",
+for table in ["inbound", "outbound", "treaty_report",
               "reference_codes", "recon_result"]:
     db.execute(f"CREATE VIEW {table} AS SELECT * FROM read_csv_auto('{DATA / table}.csv', all_varchar=true)")
 # all_varchar=true keeps codes like '7310' as text, not numbers
@@ -72,19 +72,7 @@ def get_treaty_terms(treaty_id: str) -> dict:
 
 
 # ------------------------------------------------------------------
-# Tool 5: error and retention files
-# ------------------------------------------------------------------
-def check_error_retention(txn_id: str) -> dict:
-    """Is the transaction in SRM's error or retention file?"""
-    err = _rows("SELECT error_reason FROM error WHERE txn_id = ?", [str(txn_id)])
-    ret = _rows("SELECT retained_amount FROM retention WHERE txn_id = ?", [str(txn_id)])
-    return {"txn_id": str(txn_id),
-            "in_error_file": bool(err), "error_reason": err[0]["error_reason"] if err else None,
-            "in_retention_file": bool(ret)}
-
-
-# ------------------------------------------------------------------
-# Tool 6: search treaty documents (simple RAG: chunk + retrieve)
+# Tool 5: search treaty documents (simple RAG: chunk + retrieve)
 # ------------------------------------------------------------------
 def _chunk_treaty(treaty_id: str) -> list[dict]:
     """Split a treaty into clause-level chunks on 'Article' / 'Endorsement' headings."""
@@ -117,4 +105,4 @@ def search_treaty(treaty_id: str, query: str, top_k: int = 3) -> dict:
 
 # Name -> function lookup, used by the agent loop
 TOOLS = {f.__name__: f for f in [get_recon_row, get_outbound_postings, check_reference_code,
-                                 get_treaty_terms, check_error_retention, search_treaty]}
+                                 get_treaty_terms, search_treaty]}

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from agent.tools import (get_recon_row, get_outbound_postings, check_reference_code,
-                         get_treaty_terms, check_error_retention, search_treaty)
+                         get_treaty_terms, search_treaty)
 
 key = list(csv.DictReader(open(ROOT / "data" / "answer_key.csv")))
 first = lambda cause: next(r["txn_id"] for r in key if r["true_root_cause"] == cause)
@@ -50,9 +50,6 @@ check("amendment: endorsement mentions 15%", bool(endorsement) and "15%" in endo
 # E. Duplicate -> two postings in this cycle
 t = first("Duplicate posting")
 check("duplicate: two postings", get_outbound_postings(t)["posting_count"] == 2)
-
-# Error/retention tool works both ways
-check("error/retention: Unclassified row not in files", not check_error_retention(t)["in_error_file"])
 
 # Distractor: T002 commission endorsement should NOT top a share query
 hits = search_treaty("T002", "reinsurer share")

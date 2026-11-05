@@ -1,22 +1,24 @@
 # Stage 2: Tools
 
-**In one line:** we wrote 6 Python functions ("tools") that look up facts about an Unclassified row. The agent will call them in Stage 3. No AI yet.
+**In one line:** we wrote 5 Python functions ("tools") that look up facts about an Unclassified row. The agent will call them in Stage 3. No AI yet.
 
 ## How the data flows
 ```
-CSV files ──► DuckDB (SQL tables) ──► tools 1–5 ──┐
+CSV files ──► DuckDB (SQL tables) ──► tools 1–4 ──┐
                                                     ├──► TOOLS dict ──► agent (Stage 3)
-treaty .txt files ──► split into clauses ──► tool 6 ┘
+treaty .txt files ──► tool 5 (split → score → top 3) ┘
 ```
 
 ## Files
 | File | What it does |
 |---|---|
-| `agent/tools.py` | The 6 tools + the TOOLS dict |
+| `agent/tools.py` | The 5 tools + the TOOLS dict |
 | `tests/test_tools.py` | Checks each tool returns the right evidence |
 | `requirements.txt` | Libraries to install: `duckdb`, `google-genai` |
 
 ## Code map: what happens where (`agent/tools.py`)
+
+**Tool vs helper:** a *tool* is a function the agent can call (it's in the `TOOLS` dict). A *helper* (name starts with `_`) is used inside tools; the agent never sees it. `_rows` and `_chunk_treaty` are helpers.
 
 | What happens | Function | Lines | In plain words |
 |---|---|---|---|
@@ -26,11 +28,10 @@ treaty .txt files ──► split into clauses ──► tool 6 ┘
 | Tool 2: postings | `get_outbound_postings` | 45–50 | SQL on `outbound` for **all cycles**. Shows next-cycle postings (timing) and double postings (duplicate). |
 | Tool 3: code check | `check_reference_code` | 55–63 | SQL reads valid codes. **Python** (line 59) finds valid codes that differ by exactly 1 digit, i.e. likely typos. |
 | Tool 4: SRM treaty setup | `get_treaty_terms` | 68–72 | SQL on `treaty_report`. Returns share %, contract dates. |
-| Tool 5: error/retention | `check_error_retention` | 77–83 | Two SQL queries: is the txn in `error`? In `retention`? |
-| **Split treaty into clauses** | `_chunk_treaty` | 89–96 | Reads the .txt file. **Line 94** cuts the text at each line starting `Article N:` or `Endorsement No.`. Each piece becomes `{section, text}`. |
-| **Keyword search** | `search_treaty` | 106–111 | Line 107 breaks text into words and drops filler words (`STOPWORDS`, line 98). Line 106 shortens words to 5 letters, so "amended" and "amendment" match. **Line 111** scores each clause = number of matching words. |
-| **Ranking + top 3** | `search_treaty` | 114–115 | Line 114 sorts clauses by score, highest first. Line 115 keeps the top 3. |
-| Tool lookup | `TOOLS` | 119–120 | A dict: tool name → function. The agent says a name; we find and run the function. |
+| Tool 5, step 1: **split treaty into clauses** | `_chunk_treaty` (helper) | 77–84 | Reads the .txt file. **Line 82** cuts the text at each line starting `Article N:` or `Endorsement No.`. Each piece becomes `{section, text}`. |
+| Tool 5, step 2: **keyword search** | `search_treaty` | 94–99 | Line 95 breaks text into words and drops filler words (`STOPWORDS`, line 86). Line 94 shortens words to 5 letters, so "amended" and "amendment" match. **Line 99** scores each clause = number of matching words. |
+| Tool 5, step 3: **ranking + top 3** | `search_treaty` | 102–103 | Line 102 sorts clauses by score, highest first. Line 103 keeps the top 3. |
+| Tool lookup | `TOOLS` | 107–108 | A dict: tool name → function. The agent says a name; we find and run the function. |
 
 ## Code map: `tests/test_tools.py`
 | What happens | Lines | In plain words |
@@ -46,14 +47,15 @@ treaty .txt files ──► split into clauses ──► tool 6 ┘
 | Company code not mapped | 1 → 3 | Code invalid, 1 digit off a valid code |
 | Timing difference | 1 → 2 | Posted only in next cycle |
 | Variance beyond tolerance | 1 | Variance $1–$4.50 |
-| Treaty amendment | 1 → 4 → 6 | SRM 20%, endorsement says 15% |
+| Treaty amendment | 1 → 4 → 5 | SRM 20%, endorsement says 15% |
 | Duplicate posting | 1 → 2 | 2 postings |
 | Needs analyst | all | Nothing explains it |
 
 ## Key decisions and why
 | Decision | Why | Trade-off |
 |---|---|---|
-| 6 narrow tools, not one "run any SQL" tool | Safe, reliable, auditable, easy to evaluate | Less flexible: new needs mean new tools |
+| 5 narrow tools, not one "run any SQL" tool | Safe, reliable, auditable, easy to evaluate | Less flexible: new needs mean new tools |
+| Removed the error/retention tool on review | The recon already checks error and retention before a row can be Unclassified, so the tool always returned "not found": a wasted call | Would need it back if error files arrive after recon |
 | Tools return small dicts | Less for the LLM to read: cheaper, fewer mistakes | — |
 | DuckDB on CSVs | Real SQL, zero setup; swaps for Databricks later | — |
 | Codes read as text | Codes are labels; numbers would drop leading zeros | — |
@@ -63,8 +65,8 @@ treaty .txt files ──► split into clauses ──► tool 6 ┘
 | Keyword search first | Works without an API key; gives a baseline | Matches words, not meaning |
 
 ## What testing caught
-1. **Chunking bug (line 94):** the old rule split at *any* line starting "Article 4", including the endorsement sentence "Article 4 is amended…". This cut the endorsement's heading off its content. **Fix:** split only on `Article N:` (with the colon).
-2. **Ranking limitation (line 111):** for "reinsurer share amendment", the original 20% clause scores 4 and the 15% endorsement scores 3, because the original uses "share" and "reinsurer" twice. Keyword search counts words; it doesn't know an endorsement overrides. **Mitigation:** top 3 + a prompt rule "endorsements override base terms" (Stage 3). **Future fix:** embeddings.
+1. **Chunking bug (line 82):** the old rule split at *any* line starting "Article 4", including the endorsement sentence "Article 4 is amended…". This cut the endorsement's heading off its content. **Fix:** split only on `Article N:` (with the colon).
+2. **Ranking limitation (line 99):** for "reinsurer share amendment", the original 20% clause scores 4 and the 15% endorsement scores 3, because the original uses "share" and "reinsurer" twice. Keyword search counts words; it doesn't know an endorsement overrides. **Mitigation:** top 3 + a prompt rule "endorsements override base terms" (Stage 3). **Future fix:** embeddings.
 
 ## Likely interview questions
 | Question | Answer |
@@ -73,4 +75,5 @@ treaty .txt files ──► split into clauses ──► tool 6 ┘
 | How did you test before adding the LLM? | Unit tests per root cause, so later failures point to reasoning, not data. |
 | How does retrieval work? | Split treaty by clause headings → score clauses by matching words → return top 3. |
 | Why top 3? | Testing showed the base clause outranks the endorsement; top 3 keeps the right one in view. |
+| Did you remove anything? | Yes: an error/retention tool. It duplicated a check the recon already does, so it never added evidence. Every tool should add new information. |
 | Why not embeddings? | Planned upgrade. Keyword search gave a baseline and needed no API key. |

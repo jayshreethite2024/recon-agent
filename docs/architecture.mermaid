@@ -9,12 +9,16 @@ flowchart TD
     TXT["treaties/T001-T004.txt<br/>(hand-written treaty documents)"]
 
     subgraph DATA["data/ folder"]
-        CSV["inbound.csv, outbound.csv,<br/>error.csv, retention.csv,<br/>treaty_report.csv, reference_codes.csv"]
+        REF["treaty_report.csv,<br/>reference_codes.csv"]
+        CSV["inbound.csv, outbound.csv"]
+        ERR["error.csv, retention.csv<br/>(used by recon rules only)"]
         RECON["recon_result.csv<br/>50 rows = Unclassified"]
         KEY["answer_key.csv<br/>true root cause per row<br/>(hidden from agent)"]
     end
 
+    G1 --> REF
     G2 --> CSV
+    G2 --> ERR
     G3 --> RECON
     G2 --> KEY
 
@@ -24,16 +28,16 @@ flowchart TD
         T2["get_outbound_postings<br/>SQL: all cycles"]
         T3["check_reference_code<br/>SQL + near-match in Python"]
         T4["get_treaty_terms<br/>SQL: treaty_report"]
-        T5["check_error_retention<br/>SQL: error + retention"]
-        CH["_chunk_treaty<br/>split by Article / Endorsement"]
-        T6["search_treaty<br/>keyword score, sort, top 3"]
+        CH["_chunk_treaty (helper)<br/>split by Article / Endorsement"]
+        T5["search_treaty<br/>keyword score, sort, top 3"]
         REG["TOOLS dict<br/>name -> function"]
-        DUCK --> T1 & T2 & T3 & T4 & T5
-        CH --> T6
-        T1 & T2 & T3 & T4 & T5 & T6 --> REG
+        DUCK --> T1 & T2 & T3 & T4
+        CH --> T5
+        T1 & T2 & T3 & T4 & T5 --> REG
     end
 
     CSV --> DUCK
+    REF --> DUCK
     RECON --> DUCK
     TXT --> CH
 
