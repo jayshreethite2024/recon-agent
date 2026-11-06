@@ -77,3 +77,62 @@ treaty .txt files ──► tool 5 (split → score → top 3) ┘
 | Why top 3? | Testing showed the base clause outranks the endorsement; top 3 keeps the right one in view. |
 | Did you remove anything? | Yes: an error/retention tool. It duplicated a check the recon already does, so it never added evidence. Every tool should add new information. |
 | Why not embeddings? | Planned upgrade. Keyword search gave a baseline and needed no API key. |
+
+---
+
+## My study Q&A
+
+**Where is SQL used if this is Python code?**
+SQL runs *inside* Python via DuckDB. Lines 13–17 turn each CSV into a SQL table. Each tool writes a SQL string and `_rows` (line 21) sends it to DuckDB. Python wraps it as a function and returns a dict. Same idea as `spark.sql("SELECT ...")` in PySpark. Every tool uses SQL except `search_treaty`, which reads text files in Python.
+
+**What is a dict?**
+Python's label → value pairs, like one table row with column names: `{"txn_id": "10436", "company_code": "7311"}`. Read a value with `row["company_code"]`. Looks almost like JSON, which is why LLMs read it easily. A list of dicts = a table. Every tool returns a dict; `TOOLS` is a dict of name → function.
+
+**What does `test_tools.py` do?**
+Picks one row per root cause from the answer key, calls the tools on it, and checks the **evidence** appears (e.g. duplicate → `posting_count == 2`). It does **not** check the root cause label, because tools return facts, not conclusions.
+
+| | Tests (Stage 2) | Evals (Stage 4) |
+|---|---|---|
+| Checks | Tools give the right facts | Agent reaches the right conclusion |
+| Rows | 1 per root cause | All 50 |
+| Compared with | Expected evidence | Answer key label |
+
+Why test tools separately: if the agent is wrong later, we know it's reasoning, not bad data.
+
+**Why was the error/retention tool removed?**
+The recon already checks error and retention *before* a row can be Unclassified, so for every Unclassified row the tool returned "not found". It added no new evidence and wasted a step. Rule: every tool must add new information.
+
+**How many tools: 5 or 6? Is splitting the treaty a tool?**
+5 tools. A **tool** is something the agent can call (it's in `TOOLS`). A **helper** (name starts with `_`) is used inside a tool; the agent never sees it. Splitting, scoring and ranking all happen *inside* tool 5 (`search_treaty`); `_chunk_treaty` is its helper.
+
+**Is splitting by clauses "chunking"?**
+Yes. A chunk is a piece of a document about one thing. We chunk by clause heading (line 82), so each Article or Endorsement is one chunk.
+
+**Which keyword from the recon report is used to search the treaty?**
+None. The row gives only the `treaty_id` (which treaty to search). The **query text is written by the agent** based on what it suspects, e.g. variance ≈ 5% of gross and SRM says 20% → searches `"reinsurer share amendment"`. In tests we typed the query by hand.
+
+**How does scoring and ranking work?** (query `"reinsurer share amendment"` on T003)
+1. Break the query into words, shorten each to 5 letters: {reins, share, amend}
+2. For each chunk, count words whose stem matches:
+
+| Chunk | Matches | Score |
+|---|---|---|
+| Article 4: Reinsurer's Share (20%) | Reinsurer, Share, Reinsurers, share | 4 |
+| Endorsement No. 1 (15%) | amended, Reinsurers, share | 3 |
+| Article 1: Parties | Reinsurers | 1 |
+| Articles 2, 3, 5 | none | 0, dropped |
+
+3. Sort by score, keep the top 3 (lines 102–103).
+
+Stemming matters: without it "amendment" wouldn't match "amended". Weakness: Article 4 wins only by repeating words; keyword search doesn't understand that an endorsement overrides.
+
+**Will keyword search be replaced by embeddings?**
+Not yet. Stage 3 keeps keyword search to get a **baseline**. In Stage 4: add embeddings, run the same evals, compare (does the endorsement rank #1? does amendment accuracy rise?). Likely end state is **hybrid**: embeddings match meaning ("share reduced" ≈ "participation changed"); keywords match exact terms (codes, "Article 4"). Interview story: "baseline → measured → improved from X% to Y%."
+
+**How does the agent decide which tool to run?**
+No if/else in our code. The LLM reads three things: the row, the tool menu (names + descriptions), and the system prompt. It picks the most sensible next step, like an analyst, then decides again after each result:
+```
+Sees outbound missing        → check_reference_code(7311)
+Sees invalid, similar 7310   → final answer: Company code not mapped
+```
+We steer it through clear tool descriptions, the system prompt (e.g. "endorsements override base terms"), and fixing what evals show it gets wrong. Stage 3 will print each decision so it's visible.
