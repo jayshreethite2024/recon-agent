@@ -52,14 +52,27 @@ flowchart TD
     KEY --> TS
     REG --> TS
 
-    subgraph NEXT["NEXT: Stages 3-4 (not built yet)"]
-        AG["Agent loop + Gemini<br/>picks tools, returns root cause"]
-        EV["Evals<br/>agent answer vs answer key"]
+    subgraph S3["STAGE 3: Agent loop  (agent/agent.py)"]
+        PR["Prompt to Gemini<br/>row + system prompt + tool menu"]
+        LLM["Gemini decides<br/>next tool + why"]
+        RUN["Our code runs the tool<br/>result added to history"]
+        SUB["submit_finding<br/>root cause, evidence, confidence"]
+        PR --> LLM
+        LLM -->|"tool call"| RUN
+        RUN -->|"max 6 rounds"| LLM
+        LLM -->|"done"| SUB
     end
-    REG -.-> AG
-    AG -.-> EV
+    T1 -->|"row upfront"| PR
+    REG --> RUN
+    RS["scripts/run_agent.py<br/>runs sample rows, --check"]
+    SUB --> RS
+
+    subgraph NEXT["NEXT: Stage 4 (not built yet)"]
+        EV["Evals on all 50 rows<br/>accuracy, tools, cost, time"]
+    end
+    SUB -.-> EV
     KEY -.-> EV
 
     classDef future fill:#eee,stroke:#999,stroke-dasharray:5 5,color:#666
-    class AG,EV future
+    class EV future
 ```
