@@ -42,7 +42,7 @@ def declare(name, description, props, required):
         name=name, description=description,
         parameters=S(type="OBJECT", properties={**props, "why": WHY}, required=required + ["why"]))
 
-DECLARATIONS = [
+LOCAL_DECLARATIONS = [
     declare("get_outbound_postings",
             "List every outbound posting for a transaction across ALL cycles (this and later). "
             "Use to detect postings in a later cycle or multiple postings.",
@@ -58,26 +58,56 @@ DECLARATIONS = [
             "Search the treaty DOCUMENT text and return the 3 most relevant clauses, "
             "including endorsements. Write a short keyword query, e.g. 'reinsurer share amendment'.",
             {"treaty_id": S(type="STRING"), "query": S(type="STRING")}, ["treaty_id", "query"]),
-    declare("submit_finding",
+]
+
+# The final answer is a tool too. It belongs to the agent, not the data, so it's never on the MCP server.
+SUBMIT = declare("submit_finding",
             "Submit your final conclusion. Call exactly once, when you are done investigating.",
             {"root_cause": S(type="STRING", enum=ROOT_CAUSES),
              "evidence": S(type="STRING", description="Specific facts from tool results"),
              "confidence": S(type="STRING", enum=["high", "medium", "low"])},
-            ["root_cause", "evidence", "confidence"]),
-]
+            ["root_cause", "evidence", "confidence"])
 
 FUNCTIONS = {"get_outbound_postings": get_outbound_postings, "check_reference_code": check_reference_code,
              "get_treaty_terms": get_treaty_terms, "search_treaty": search_treaty}
 
-CONFIG = types.GenerateContentConfig(
+# ------------------------------------------------------------------
+# 2b. Where tools come from: local Python functions, or an MCP server (Stage 5)
+#     Both give the same two things: declarations (the menu) and call() (run a tool).
+# ------------------------------------------------------------------
+TOOL_SOURCE = os.getenv("TOOL_SOURCE", "local")      # "local" or "mcp" (set in .env)
+
+class LocalTools:
+    source = "local"
+    declarations = LOCAL_DECLARATIONS
+    def call(self, name, args):
+        fn = FUNCTIONS.get(name)
+        return fn(**args) if fn else {"error": f"unknown tool {name}"}
+
+_toolbox = None
+def get_toolbox():
+    """Create the toolbox once and reuse it (starting the MCP server is slow)."""
+    global _toolbox
+    if _toolbox is None:
+        if TOOL_SOURCE == "mcp":
+            from agent.mcp_tools import MCPTools
+            _toolbox = MCPTools()
+        else:
+            _toolbox = LocalTools()
+    return _toolbox
+
+def make_config(declarations):
+    return types.GenerateContentConfig(
     system_instruction=SYSTEM_PROMPT,
-    tools=[types.Tool(function_declarations=DECLARATIONS)],
+    tools=[types.Tool(function_declarations=declarations + [SUBMIT])],
     # mode ANY = the model must call a tool every turn (an investigation tool or submit_finding),
     # so the final answer always arrives in a fixed structure
     tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="ANY")),
     # no temperature: Gemini 3.x models removed sampling parameters
     thinking_config=types.ThinkingConfig(thinking_level=THINKING),   # LOW = faster, cheaper
-)
+    )
+
+CONFIG = make_config(LOCAL_DECLARATIONS)
 
 # ------------------------------------------------------------------
 # 3a. Gemini client: no hidden library retries, 60s timeout per call,
@@ -91,13 +121,14 @@ def make_client():
 # ------------------------------------------------------------------
 # 3b. Calling Gemini, with retry when the service is busy
 # ------------------------------------------------------------------
-def call_llm(client, contents, log=print, sleep=time.sleep):
+def call_llm(client, contents, log=print, sleep=time.sleep, config=None):
     """Call Gemini. If busy (503) or rate-limited (429): wait and retry,
     then switch to the lighter fallback model. Returns (response, model_used)."""
     for model in [MODEL, FALLBACK_MODEL]:
         for attempt, wait in enumerate(RETRY_WAITS + [None], start=1):
             try:
-                return client.models.generate_content(model=model, contents=contents, config=CONFIG), model
+                return client.models.generate_content(model=model, contents=contents,
+                                                      config=config or CONFIG), model
             except (errors.APIError, httpx.TimeoutException) as e:
                 code = getattr(e, "code", "timeout")
                 if code != "timeout" and code not in RETRYABLE:
@@ -125,8 +156,10 @@ def check_finding(root_cause, trace):
 # ------------------------------------------------------------------
 # 5. The loop
 # ------------------------------------------------------------------
-def investigate(txn_id, client=None, verbose=True):
+def investigate(txn_id, client=None, verbose=True, toolbox=None):
     client = client or make_client()
+    toolbox = toolbox or get_toolbox()
+    config = CONFIG if toolbox.source == "local" else make_config(toolbox.declarations)
     row = get_recon_row(txn_id)                   # row data is given upfront, not via a tool
     contents = [types.Content(role="user", parts=[types.Part(
         text=f"Investigate this Unclassified row:\n{json.dumps(row, indent=2)}")])]
@@ -135,7 +168,7 @@ def investigate(txn_id, client=None, verbose=True):
     log(f"\n=== txn {txn_id} | treaty {row.get('treaty_id')} | variance {row.get('variance')} ===")
 
     for step in range(1, MAX_STEPS + 1):
-        response, model_used = call_llm(client, contents, log)
+        response, model_used = call_llm(client, contents, log, config=config)
         models_used.add(model_used)
         usage = response.usage_metadata
         tokens_in += usage.prompt_token_count or 0
@@ -163,8 +196,7 @@ def investigate(txn_id, client=None, verbose=True):
                 return _finish(txn_id, cause, evidence, conf, trace, tokens_in, tokens_out,
                                start, log, models_used, guardrail=problem)
 
-            fn = FUNCTIONS.get(call.name)
-            output = fn(**args) if fn else {"error": f"unknown tool {call.name}"}
+            output = toolbox.call(call.name, args)          # local function or MCP server
             trace.append({"step": step, "tool": call.name, "args": args, "why": why, "result": output})
             log(f"Step {step}: {call.name}({args})\n   why: {why}\n   got: {json.dumps(output)[:300]}")
             results.append(types.Part.from_function_response(name=call.name, response=output))
@@ -179,7 +211,7 @@ def _finish(txn_id, root_cause, evidence, confidence, trace, tokens_in, tokens_o
             guardrail=None):
     result = {"txn_id": str(txn_id), "root_cause": root_cause, "evidence": evidence,
               "confidence": confidence, "steps": len(trace), "tools_used": [t["tool"] for t in trace],
-              "models": sorted(models_used), "prompt": PROMPT_VERSION, "guardrail": guardrail,
+              "models": sorted(models_used), "prompt": PROMPT_VERSION, "tools": TOOL_SOURCE, "guardrail": guardrail,
               "tokens_in": tokens_in, "tokens_out": tokens_out,
               "seconds": round(time.time() - start, 1), "trace": trace}
     log(f"FINDING: {root_cause} ({confidence})\n   evidence: {evidence}\n"

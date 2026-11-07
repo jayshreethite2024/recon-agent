@@ -4,18 +4,7 @@ import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).reso
 from google.genai import types
 from agent.agent import investigate
 
-def resp(name, args):
-    return types.GenerateContentResponse(
-        candidates=[types.Candidate(content=types.Content(role="model",
-            parts=[types.Part(function_call=types.FunctionCall(name=name, args=args))]))],
-        usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=500, candidates_token_count=40))
-
-class FakeModels:
-    def __init__(self, script): self.script, self.calls = script, []
-    def generate_content(self, model, contents, config):
-        self.calls.append(len(contents)); return self.script.pop(0)
-class FakeClient:
-    def __init__(self, script): self.models = FakeModels(script)
+from tests.fakes import resp, FakeModels, FakeClient
 
 # scripted "LLM": check code, then submit
 c = FakeClient([

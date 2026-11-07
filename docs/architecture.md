@@ -67,12 +67,26 @@ flowchart TD
     RS["scripts/run_agent.py<br/>runs sample rows, --check"]
     SUB --> RS
 
-    subgraph NEXT["NEXT: Stage 4 (not built yet)"]
-        EV["Evals on all 50 rows<br/>accuracy, tools, cost, time"]
+    subgraph S4["STAGE 4: Evals  (scripts/run_evals.py)"]
+        EV["All 50 rows vs answer key<br/>accuracy, safety, steps, cost<br/>v2 prompt + guardrail: 99%"]
     end
-    SUB -.-> EV
-    KEY -.-> EV
+    SUB --> EV
+    KEY --> EV
+
+    subgraph S5["STAGE 5: MCP"]
+        MCPS["mcp_server/server.py<br/>4 tools over MCP"]
+        MCPC["agent/mcp_tools.py<br/>discover tools, forward calls"]
+        MCPC <-->|"stdio"| MCPS
+    end
+    REG --> MCPS
+    MCPC -->|"TOOL_SOURCE=mcp"| RUN
+    CD["Other MCP apps<br/>e.g. Claude Desktop"] -.-> MCPS
+
+    subgraph NEXT["NEXT: Stage 6"]
+        UI["Streamlit UI + deploy + README"]
+    end
+    SUB -.-> UI
 
     classDef future fill:#eee,stroke:#999,stroke-dasharray:5 5,color:#666
-    class EV future
+    class UI future
 ```

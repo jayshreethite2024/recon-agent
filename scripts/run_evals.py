@@ -63,7 +63,8 @@ def summarise(results):
     avg = lambda key: sum(r[key] for r in results) / n
     lines = [f"# Eval report ({datetime.now():%Y-%m-%d %H:%M})", "",
              f"Rows: {n} | Models: {', '.join(sorted({m for r in results for m in r['models']})) or '-'} | "
-             f"Prompt: {', '.join(sorted({r['prompt'] for r in results if r['prompt']})) or '-'}", ""]
+             f"Prompt: {', '.join(sorted({r['prompt'] for r in results if r['prompt']})) or '-'} | "
+             f"Tools: {', '.join(sorted({r.get('tools', '') for r in results if r.get('tools')})) or '-'}", ""]
 
     correct = sum(r["correct"] for r in results)
     errors = sum(r["root_cause"] == "ERROR" for r in results)
