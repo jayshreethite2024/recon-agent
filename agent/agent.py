@@ -9,6 +9,7 @@ import json, os, time
 import httpx
 from google import genai
 from google.genai import types, errors
+from agent.prompts import PROMPTS
 from agent.tools import (get_recon_row, get_outbound_postings, check_reference_code,
                          get_treaty_terms, search_treaty)
 
@@ -23,29 +24,11 @@ ROOT_CAUSES = ["Company code not mapped", "Timing difference", "Variance just be
                "Treaty amendment not reflected", "Duplicate posting", "Needs analyst"]
 
 # ------------------------------------------------------------------
-# 1. System prompt: the agent's job description (applies to every step)
+# 1. System prompt: chosen by version (see agent/prompts.py)
 # ------------------------------------------------------------------
-SYSTEM_PROMPT = f"""You investigate Unclassified rows from a reinsurance reconciliation.
-Expected amount = gross amount x treaty share %. A row is Unclassified when actual
-outbound differs from expected by more than $0.90 and no existing rule explains it.
-
-Use the tools to gather evidence, then call submit_finding exactly once.
-
-Root causes you can choose from:
-- Company code not mapped: the row's company code is not a valid code (often a typo).
-- Timing difference: nothing posted this cycle, but posted in a later cycle.
-- Variance just beyond tolerance: small rounding difference, under about $5.
-- Treaty amendment not reflected: the treaty document (e.g. an endorsement) changed
-  terms such as share %, but SRM's treaty setup still has the old terms.
-- Duplicate posting: the transaction was posted more than once.
-- Needs analyst: the evidence does not clearly support any cause above.
-
-Rules:
-- Base every conclusion on tool results. Quote the specific facts in your evidence.
-- Endorsements and amendments override the base treaty terms.
-- Never guess. If evidence is weak or conflicting, choose "Needs analyst".
-- In each tool call, fill "why" with one sentence explaining why you are calling it.
-"""
+PROMPT_VERSION = os.getenv("PROMPT_VERSION", "v2")
+SYSTEM_PROMPT = PROMPTS[PROMPT_VERSION]
+GUARDRAILS = os.getenv("GUARDRAILS", "on") == "on"
 
 # ------------------------------------------------------------------
 # 2. Tool menu: what the LLM reads to decide which tool to call
@@ -128,7 +111,19 @@ def call_llm(client, contents, log=print, sleep=time.sleep):
     raise RuntimeError("Both models busy. Try again later.")
 
 # ------------------------------------------------------------------
-# 4. The loop
+# 4. Guardrail: a code check on the LLM's answer (doesn't rely on the prompt)
+# ------------------------------------------------------------------
+def check_finding(root_cause, trace):
+    """Return a reason to reject the finding, or None if it passes."""
+    if root_cause == "Treaty amendment not reflected":
+        sections = [res["section"] for t in trace if t["tool"] == "search_treaty"
+                    for res in t["result"].get("results", [])]
+        if not any(sec.startswith(("Endorsement", "Amendment")) for sec in sections):
+            return "amendment claimed, but no endorsement/amendment clause was retrieved"
+    return None
+
+# ------------------------------------------------------------------
+# 5. The loop
 # ------------------------------------------------------------------
 def investigate(txn_id, client=None, verbose=True):
     client = client or make_client()
@@ -159,8 +154,14 @@ def investigate(txn_id, client=None, verbose=True):
 
             if call.name == "submit_finding":               # agent is done
                 trace.append({"step": step, "tool": "submit_finding", "why": why})
-                return _finish(txn_id, args.get("root_cause"), args.get("evidence"), args.get("confidence"),
-                               trace, tokens_in, tokens_out, start, log, models_used)
+                cause, evidence, conf = args.get("root_cause"), args.get("evidence"), args.get("confidence")
+                problem = check_finding(cause, trace) if GUARDRAILS else None
+                if problem:                                 # guardrail overrides the LLM
+                    log(f"   GUARDRAIL: {problem} -> Needs analyst")
+                    evidence = f"[Guardrail: {problem}; agent said '{cause}'] {evidence}"
+                    cause, conf = "Needs analyst", "low"
+                return _finish(txn_id, cause, evidence, conf, trace, tokens_in, tokens_out,
+                               start, log, models_used, guardrail=problem)
 
             fn = FUNCTIONS.get(call.name)
             output = fn(**args) if fn else {"error": f"unknown tool {call.name}"}
@@ -174,10 +175,12 @@ def investigate(txn_id, client=None, verbose=True):
                    trace, tokens_in, tokens_out, start, log, models_used)
 
 
-def _finish(txn_id, root_cause, evidence, confidence, trace, tokens_in, tokens_out, start, log, models_used):
+def _finish(txn_id, root_cause, evidence, confidence, trace, tokens_in, tokens_out, start, log, models_used,
+            guardrail=None):
     result = {"txn_id": str(txn_id), "root_cause": root_cause, "evidence": evidence,
               "confidence": confidence, "steps": len(trace), "tools_used": [t["tool"] for t in trace],
-              "models": sorted(models_used), "tokens_in": tokens_in, "tokens_out": tokens_out,
+              "models": sorted(models_used), "prompt": PROMPT_VERSION, "guardrail": guardrail,
+              "tokens_in": tokens_in, "tokens_out": tokens_out,
               "seconds": round(time.time() - start, 1), "trace": trace}
     log(f"FINDING: {root_cause} ({confidence})\n   evidence: {evidence}\n"
         f"   {result['steps']} steps, {tokens_in}+{tokens_out} tokens, {result['seconds']}s, model: {', '.join(result['models'])}")

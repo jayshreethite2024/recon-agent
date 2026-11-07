@@ -27,26 +27,30 @@ recon row (get_recon_row) ──► prompt to Gemini (row + system prompt + tool
 
 | What happens | Where | Lines | In plain words |
 |---|---|---|---|
-| Settings | `MODEL`, `FALLBACK_MODEL`, `MAX_STEPS` | 14–16 | Main model (Flash), lighter backup (Flash-Lite), max 6 rounds. Both model names can be set in `.env` |
-| Retry waits | `RETRY_WAITS` | 17 | Wait 5 then 15 seconds between retries on each model |
-| Allowed answers | `ROOT_CAUSES` | 19 | The fixed list the agent must choose from |
-| **Job description** | `SYSTEM_PROMPT` | 25 | Explains the recon, defines each root cause, sets rules: use evidence, endorsements override, never guess, fill "why" |
-| Tool menu builder | `declare` | 54 | Builds one tool description and adds a required `why` argument to every tool |
-| **Tool menu** | `DECLARATIONS` | 59 | 4 investigation tools + `submit_finding`. This is all the LLM sees about our tools |
-| Name → function | `FUNCTIONS` | 83 | Which Python function runs for each tool name |
-| Call settings | `CONFIG` | 86–92 | Prompt + menu; **mode ANY** (line 91) forces a tool call every turn |
-| **Call Gemini with retry + fallback** | `call_llm` | 98–116 | Tries Flash. If busy (503) or rate-limited (429): wait 5s, retry, wait 15s, retry. Still busy → switch to Flash-Lite and do the same. Any other error stops the run. Returns the response and which model answered |
-| **The loop** | `investigate` | 119 | Everything below happens here |
-| Start with the row | line 121 | 121 | Row data goes straight into the first message, not via a tool |
-| Ask Gemini | line 129 | 129 | Sends full history + menu |
-| Count tokens | line 132 | 132–134 | Adds up input/output tokens for cost |
-| Save its request | line 140 | 140 | Adds "I want to call X" to history |
-| Take out "why" | line 144 | 144 | Keeps the reasoning for the trace; the Python function doesn't need it |
-| **Done?** | line 146 | 146 | If it called `submit_finding`, stop and return the answer |
-| **Run the tool** | line 152 | 152 | Our code runs the Python function |
-| Send results back | line 157 | 157 | Adds results to history; loop goes round again |
-| Safety stop | line 159 | 159 | After 6 rounds: "Needs analyst" |
-| Package the result | `_finish` | 163 | Root cause, evidence, confidence, steps, tools used, **models used**, tokens, seconds, full trace |
+| Settings | `MODEL`, `FALLBACK_MODEL`, `MAX_STEPS` | 16–18 | Main model, lighter backup, max 6 rounds. Model names can be set in `.env` |
+| Retry settings | `RETRY_WAITS`, `RETRYABLE` | 19–20 | Wait 5s then 15s; retry on 429, 500, 503, 504 |
+| Thinking level | `THINKING` | 21 | LOW = faster, cheaper. Set `GEMINI_THINKING` in `.env` |
+| Allowed answers | `ROOT_CAUSES` | 23 | The fixed list the agent must choose from |
+| **Job description** | `SYSTEM_PROMPT` | 29–30 | Picks the prompt version (`PROMPT_VERSION` in `.env`, default v2). The prompt text lives in `agent/prompts.py` |
+| Guardrail switch | `GUARDRAILS` | 31 | On by default (Stage 4) |
+| Tool menu builder | `declare` | 40 | Builds one tool description and adds a required `why` argument |
+| **Tool menu** | `DECLARATIONS` | 45 | 4 investigation tools + `submit_finding`. All the LLM sees about our tools |
+| Name → function | `FUNCTIONS` | 69 | Which Python function runs for each tool name |
+| Call settings | `CONFIG` | 72–80 | Prompt + menu; **mode ANY** (line 77) forces a tool call every turn; thinking level |
+| Gemini client | `make_client` | 86 | No hidden library retries, 2-minute timeout, so our retry logic is in control |
+| **Call Gemini with retry + fallback** | `call_llm` | 94–111 | Tries main model; on temporary errors waits 5s, 15s; then switches to the fallback model. Other errors stop the run |
+| Guardrail check | `check_finding` | 116 | Code check on the answer (Stage 4) |
+| **The loop** | `investigate` | 128 | Everything below happens here |
+| Start with the row | line 130 | 130 | Row data goes straight into the first message, not via a tool |
+| Ask Gemini | line 138 | 138 | Sends full history + menu |
+| Count tokens | line 141 | 141–143 | Adds up input/output tokens for cost |
+| Save its request | line 149 | 149 | Adds "I want to call X" to history |
+| Take out "why" | line 153 | 153 | Keeps the reasoning for the trace |
+| **Done?** | line 155 | 155–165 | If it called `submit_finding`: run the guardrail, then stop and return the answer |
+| **Run the tool** | line 167 | 167 | Our code runs the Python function |
+| Send results back | line 172 | 172 | Adds results to history; loop goes round again |
+| Safety stop | line 174 | 174 | After 6 rounds: "Needs analyst" |
+| Package the result | `_finish` | 178 | Root cause, evidence, confidence, steps, tools, models, prompt version, guardrail, tokens, seconds, trace |
 
 ## Code map: `scripts/run_agent.py`
 | What happens | Lines | In plain words |

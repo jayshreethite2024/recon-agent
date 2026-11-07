@@ -55,4 +55,22 @@ sm = SlowOnce([resp("submit_finding", {"root_cause": "Duplicate posting", "evide
 waits = []
 out, used = A.call_llm(type("C", (), {"models": sm})(), [], log=lambda *a: None, sleep=waits.append)
 assert waits == [5] and used == A.MODEL, (waits, used)
+# guardrail: "amendment" without retrieving an endorsement -> overridden to Needs analyst
+c = FakeClient([
+    resp("search_treaty", {"treaty_id": "T004", "query": "reinsurer share", "why": "check share"}),
+    resp("submit_finding", {"root_cause": "Treaty amendment not reflected", "evidence": "share differs",
+                            "confidence": "high", "why": "done"})])
+r = investigate("10481", client=c, verbose=False)
+assert r["root_cause"] == "Needs analyst" and r["guardrail"] and r["confidence"] == "low", r
+
+# guardrail: amendment WITH an endorsement retrieved (T003) -> kept
+import csv
+t003 = next(x["txn_id"] for x in csv.DictReader(open(Path(__file__).resolve().parent.parent / "data" / "answer_key.csv"))
+            if x["true_root_cause"] == "Treaty amendment not reflected")
+c = FakeClient([
+    resp("search_treaty", {"treaty_id": "T003", "query": "reinsurer share amendment", "why": "check"}),
+    resp("submit_finding", {"root_cause": "Treaty amendment not reflected", "evidence": "endorsement 15%",
+                            "confidence": "high", "why": "done"})])
+r = investigate(t003, client=c, verbose=False)
+assert r["root_cause"] == "Treaty amendment not reflected" and r["guardrail"] is None, r
 print("MOCK TESTS PASSED")

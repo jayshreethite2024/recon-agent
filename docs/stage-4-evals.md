@@ -70,7 +70,7 @@ for each row:  investigate(txn) ──► agent's answer + tools used + tokens +
 |---|---|---|---|---|---|---|---|---|---|
 | Quick check (5 rows) | 3.5 Flash-Lite | v1 | 5/5 | 1/1 | 0 | 3.0 | 60% | 13.9 | 4,638 + 235 |
 | **Baseline (50 rows)** | 3.5 Flash-Lite | v1 | **48/50 = 96%** | 3/5 | **2** | 2.2 | 48% | 9.1 | 3,533 + 252 |
-| v2 | | v2 | | | | | | | |
+| **v2 + guardrail (50 rows)** | 3.5 Flash-Lite | v2 | **49/50 = 98%** | **5/5** | **0** | 1.8 | 40% | 7.7 | 3,912 + 271 |
 
 ### Baseline per root cause
 | Root cause | Rows | Recall | Precision | Avg tool calls | Min needed |
@@ -94,9 +94,28 @@ Mistakes: Needs analyst → Treaty amendment not reflected (2 rows: **10481, 104
 | 48% of rows took extra steps | Over-investigation: e.g. small-variance rows used 2.6 tool calls when the variance alone is enough | Prompt rule: stop as soon as evidence is conclusive; a variance under $5 needs no tools |
 | 9.1s, ~3,800 tokens per row | Fast and cheap enough for 50 rows per cycle | Fewer steps will cut both |
 
-**Next step (before fixing):** read the `evidence` for rows 10481 and 10479 in `results/eval_….csv` to confirm *why* it said "amendment". Hypothesis: it found an endorsement (possibly T002's commission change, which doesn't affect ceded amounts) and didn't check the numbers. Rule: look at failures before changing anything.
+### Diagnosis: what the 2 wrong rows actually said
+| Row | Agent's evidence (summary) | What went wrong |
+|---|---|---|
+| 10481 (T004) | "SRM and treaty both say 30%… actual implies 44.1%… **there are no treaty amendments or endorsements**" → labelled *amendment* | Evidence contradicts the label |
+| 10479 (T004) | "Base terms and text show 30%… actual reflects 40% **without an endorsement**" → labelled *amendment* | Same |
 
-**Interview story:** "Baseline was 96%, but the two errors were the dangerous kind: unclear rows confidently labelled as amendments. I traced the failures, tightened the prompt to require numeric verification, and re-ran the same 50 rows to measure the change."
+**My hypothesis was wrong.** I expected it to be misled by T002's commission endorsement. Instead, the agent found *no* endorsement, said so, and still chose "amendment". It treated "posted share differs from documented share" as an amendment. It's a **reasoning** failure, not a retrieval failure. Lesson: read the failures before fixing; the fix would otherwise have targeted the wrong thing.
+
+### v2: two layers of defence
+| Layer | What | Where | Why |
+|---|---|---|---|
+| 1. Prompt (v2) | Strict amendment rule: needs an endorsement clause that changes the share **and** gross × new share = actual. "Different share with no endorsement = Needs analyst" | `agent/prompts.py`, `V2` | Fixes the reasoning at the source |
+| | Self-check before submitting: does the evidence prove the label? | `V2` | Catches evidence/label contradictions like 10481 |
+| | Confidence defined (high = proven + numbers checked) | `V2` | Baseline: "high" was used 48/50 times, including both errors |
+| | Stop early when conclusive (e.g. variance under $5 needs no tools) | `V2` | Baseline: 48% extra steps |
+| 2. Code guardrail | If the answer is "amendment" but no Endorsement/Amendment clause was ever retrieved → override to "Needs analyst", confidence low | `agent/agent.py`, `check_finding` (line 116), applied at line 158 | Prompts can be ignored; code can't. A deterministic check on the riskiest label |
+
+**Versioning:** v1 and v2 prompts are both kept in `prompts.py`. Choose with `PROMPT_VERSION` in `.env`; switch guardrails off with `GUARDRAILS=off`. Every result records the prompt version and whether the guardrail fired, so runs can be compared fairly.
+
+**Tests:** the fake-LLM test now checks the guardrail both ways: "amendment" without an endorsement is overridden; "amendment" with T003's endorsement is kept.
+
+**Interview story:** "Baseline was 96%, but the two errors were the dangerous kind: unclear rows confidently labelled as amendments. Reading the traces showed the agent's own evidence said no endorsement existed, so it was a reasoning failure. I fixed it in two layers: a stricter prompt with a self-check, and a code guardrail that overrides an amendment label unless an endorsement was actually retrieved. Then I re-ran the same 50 rows to measure the change."
 
 ## Likely interview questions
 | Question | Answer |
@@ -131,3 +150,53 @@ You can only prove an improvement against a measured baseline, and you should un
 
 **Housekeeping: Git committed `__pycache__`.**
 Python's temporary files shouldn't be on GitHub. Fix: add `__pycache__/` to `.gitignore`, then `git rm -r --cached agent/__pycache__ tests/__pycache__` and commit.
+
+**What did the evidence for the 2 wrong rows show?**
+Both said there was no endorsement, then labelled the row "amendment" anyway. So it wasn't misled by the T002 commission endorsement (my guess); it misread what "amendment" means. Always read failures before fixing.
+
+**Why fix it in both the prompt and the code?**
+The prompt fixes the reasoning, but an LLM can still ignore instructions. The guardrail is a deterministic check on the riskiest label: no retrieved endorsement, no "amendment". Defence in depth, the same idea as controls in finance.
+
+**Could the guardrail hurt real amendments?**
+Only if the agent labels an amendment without having searched the treaty, which is also a bad answer. Evals will show it: watch the amendment recall and the "Guardrail overrides" count.
+
+**Why keep v1 in the code?**
+To compare v1 and v2 on the same 50 rows and prove the improvement. You can re-run v1 any time with `PROMPT_VERSION=v1`.
+
+---
+
+## v2 results vs baseline
+
+| Metric | Baseline (v1) | v2 + guardrail | Change |
+|---|---|---|---|
+| Accuracy | 96% (48/50) | **98% (49/50)** | +2 pts |
+| Unclear rows sent to analyst | 3/5 | **5/5** | Fixed |
+| **Wrong answers with high confidence** | **2** | **0** | **Fixed: the key safety metric** |
+| Amendment precision | 82% | **100%** | Fixed |
+| Confidence meaningful? | "high" 48×, incl. both errors | "high" 49× all correct; the 1 error was "medium" | Now calibrated |
+| Avg tool calls | 2.2 | 1.8 | −18% |
+| Rows with extra steps | 48% | 40% | Better, still room |
+| Small-variance tool calls | 2.6 | 0.7 | Mostly stops early now |
+| Seconds per row | 9.1 | 7.7 | −15% |
+| Input tokens per row | 3,533 | 3,912 | +11% (longer prompt) |
+| Guardrail overrides | n/a | 0 | Prompt alone fixed it; guardrail is the safety net |
+
+**The one remaining mistake:** row 10436, a "Company code not mapped" case, sent to "Needs analyst" with **medium** confidence. That's a *safe* failure: the analyst checks it, nothing wrong gets accepted. Recall for code-not-mapped is 89%.
+
+**Trade-off made:** v2 traded a slightly longer prompt (+11% input tokens) for zero confidently-wrong answers and fewer steps. For a financial control, that's the right trade.
+
+**What's still open:**
+1. Run v2 again: answers vary a little between runs (no temperature setting), so one run isn't proof of stability.
+2. 40% of rows still take extra steps, mostly code-not-mapped (2.7 calls vs 1 needed) and amendments (2.6 vs 2).
+3. Check row 10436's evidence to see why it held back.
+
+**Updated interview story:** "Baseline was 96%, but both errors were confidently wrong amendment labels. Traces showed the agent's own evidence said no endorsement existed. I added a stricter prompt with a self-check and confidence definitions, plus a code guardrail. On the same 50 rows: 98% accuracy, zero confidently-wrong answers (from 2), all 5 unclear rows correctly escalated, 18% fewer tool calls. The one remaining miss was escalated to an analyst with medium confidence: a safe failure."
+
+**Q: The guardrail never fired. Was it useless?**
+No. It's a safety net: the prompt fixed the behaviour this time, but prompts can be ignored on other runs, models or data. Zero overrides is the outcome you want; it proves the prompt worked and the net is there if it doesn't.
+
+**Q: Accuracy only went up 2 points. Why is v2 a big improvement?**
+Because the *kind* of error changed. Before: 2 confident wrong labels an analyst might accept. After: 1 cautious "please check" with medium confidence. The risk went from "wrong answer accepted" to "a few extra minutes of analyst time".
+
+**Q: Why did input tokens go up?**
+The v2 prompt is longer and is sent on every call. Partly offset by fewer tool calls. A small cost for removing the dangerous errors.

@@ -44,6 +44,7 @@ def evaluate(rows, run, pause=0):
             r = run(txn)
         except Exception as e:                       # one bad row shouldn't kill the run
             r = {"txn_id": txn, "root_cause": "ERROR", "evidence": str(e)[:200], "confidence": "",
+                 "prompt": "", "guardrail": None,
                  "steps": 0, "tools_used": [], "models": [], "tokens_in": 0, "tokens_out": 0,
                  "seconds": 0, "trace": []}
         tools = [t for t in r["tools_used"] if t != "submit_finding"]
@@ -61,7 +62,8 @@ def summarise(results):
     pct = lambda a, b: f"{100 * a / b:.0f}%" if b else "n/a"
     avg = lambda key: sum(r[key] for r in results) / n
     lines = [f"# Eval report ({datetime.now():%Y-%m-%d %H:%M})", "",
-             f"Rows: {n} | Models: {', '.join(sorted({m for r in results for m in r['models']})) or '-'}", ""]
+             f"Rows: {n} | Models: {', '.join(sorted({m for r in results for m in r['models']})) or '-'} | "
+             f"Prompt: {', '.join(sorted({r['prompt'] for r in results if r['prompt']})) or '-'}", ""]
 
     correct = sum(r["correct"] for r in results)
     errors = sum(r["root_cause"] == "ERROR" for r in results)
@@ -72,6 +74,7 @@ def summarise(results):
               f"| Rows with extra (unneeded) steps | {pct(sum(r['extra_steps'] > 0 for r in results), n)} |",
               f"| Avg tokens per row (in + out) | {avg('tokens_in'):.0f} + {avg('tokens_out'):.0f} |",
               f"| Avg seconds per row | {avg('seconds'):.1f} |",
+              f"| Guardrail overrides | {sum(bool(r['guardrail']) for r in results)} |",
               f"| Run errors | {errors} |", ""]
 
     # Safety: does it admit uncertainty instead of guessing?
@@ -113,7 +116,7 @@ def summarise(results):
 def save(results, report):
     out = ROOT / "results"; out.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
-    cols = ["txn_id", "true_cause", "root_cause", "correct", "confidence", "used_required_tools",
+    cols = ["txn_id", "true_cause", "root_cause", "correct", "confidence", "prompt", "guardrail", "used_required_tools",
             "tool_calls", "extra_steps", "tools_used", "models", "tokens_in", "tokens_out", "seconds", "evidence"]
     with open(out / f"eval_{stamp}.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader()
