@@ -114,3 +114,15 @@ Google's library has its own hidden retries. When Gemini was busy, it retried qu
 
 **Error: "504 DEADLINE_EXCEEDED".**
 Gemini took longer than our 60s limit to answer: overloaded, plus the model "thinks" before answering. Fixes: (1) 504 and 500 are now retried like 503, and timeouts too; (2) timeout raised to 2 minutes; (3) `thinking_level=LOW` so the model thinks less: faster and cheaper. Our task is simple enough not to need deep thinking; if accuracy suffers in evals we can raise it (set `GEMINI_THINKING=MEDIUM` in `.env`). This is a real trade-off to mention in interviews: latency and cost vs reasoning depth.
+
+**First real run: 5/5 correct, but every answer came from Flash-Lite. Why?**
+Flash 3.8 was busy (503), too slow (504) or rate-limited (429) all session. The fallback saved the run, but each step wasted ~20s retrying Flash first (one row took 7 minutes). Fix: made Flash-Lite the main model in `.env` (`GEMINI_MODEL=gemini-3.5-flash-lite`). After that: ~9–14s per row.
+
+**What did the first run show besides accuracy?**
+Over-investigation: e.g. a $2.21 variance (enough on its own) took 5 steps; an invalid code found in step 2 was followed by unneeded treaty checks. Right answers, wasted time and tokens. Measured properly in Stage 4.
+
+**How does `.env` get used?**
+`.env` is a settings file, not code. `run_agent.py` lines 17–18 (`load_dotenv`) load each line as an environment variable. `agent.py` line 14 reads `GEMINI_MODEL` with `os.getenv(...)`; if missing it uses the default after the comma. `GEMINI_API_KEY` is picked up automatically by Google's library. If a setting appears twice, the last line wins. Why: secrets stay out of GitHub, and settings change without touching code.
+
+**Newer models were released (e.g. Gemini Omni 1.2 Flash). Should we switch?**
+No. Omni is built for video and multimodal generation; our agent only reads text and calls tools. Flash-Lite got 5/5, is available, and is the cheapest and fastest. The "best model" is decided by evals, not release notes: compare models on the same 50 rows and pick the cheapest one that's accurate enough.
