@@ -71,6 +71,10 @@ for each row:  investigate(txn) ──► agent's answer + tools used + tokens +
 | Quick check (5 rows) | 3.5 Flash-Lite | v1 | 5/5 | 1/1 | 0 | 3.0 | 60% | 13.9 | 4,638 + 235 |
 | **Baseline (50 rows)** | 3.5 Flash-Lite | v1 | **48/50 = 96%** | 3/5 | **2** | 2.2 | 48% | 9.1 | 3,533 + 252 |
 | **v2 + guardrail (50 rows)** | 3.5 Flash-Lite | v2 | **49/50 = 98%** | **5/5** | **0** | 1.8 | 40% | 7.7 | 3,912 + 271 |
+| **v2 + guardrail, run 2** | 3.5 Flash-Lite | v2 | **50/50 = 100%** | **5/5** | **0** | 1.7 | 36% | 6.8 | 3,709 + 240 |
+| **v2 combined (2 runs)** | | | **99/100 = 99%** | **10/10** | **0** | 1.75 | 38% | 7.3 | ~3,800 + 255 |
+| **v2 via MCP (Stage 5)** | 3.5 Flash-Lite | v2 | **50/50 = 100%** | 5/5 | 0 | 1.8 | 36% | 7.5 | 4,190 + 288 |
+| **v2 all 3 runs** | | | **149/150 = 99.3%** | **15/15** | **0** | | | | |
 
 ### Baseline per root cause
 | Root cause | Rows | Recall | Precision | Avg tool calls | Min needed |
@@ -200,3 +204,47 @@ Because the *kind* of error changed. Before: 2 confident wrong labels an analyst
 
 **Q: Why did input tokens go up?**
 The v2 prompt is longer and is sent on every call. Partly offset by fewer tool calls. A small cost for removing the dangerous errors.
+
+---
+
+## Stability check: v2 run 2
+
+| Metric | v2 run 1 | v2 run 2 | Combined |
+|---|---|---|---|
+| Accuracy | 98% (49/50) | 100% (50/50) | **99% (99/100)** |
+| Unclear rows sent to analyst | 5/5 | 5/5 | **10/10** |
+| Confidently wrong | 0 | 0 | **0 in 100** |
+| Avg tool calls | 1.8 | 1.7 | 1.75 |
+| Small-variance tool calls | 0.7 | 0.2 | |
+| Seconds per row | 7.7 | 6.8 | 7.3 |
+
+**Row 10436 flipped:** wrong ("Needs analyst", medium) in run 1, correct in run 2. That's run-to-run variance: the model isn't fully deterministic (no temperature setting on Gemini 3.x). This is exactly why we ran twice: one run can over- or under-state accuracy.
+
+**Honest way to state the result:** "99% across two runs of 50 cases (98% and 100%), zero confidently-wrong answers in 100 investigations, every unclear case escalated." Not "100% accurate".
+
+**Caveats to state before an interviewer does:**
+- Synthetic data with 5 seeded causes and a known answer key. Real data is messier: multiple causes per row, causes we didn't list.
+- 50 cases is small. 9 per cause means one error moves recall by 11 points.
+- The real proof would be running on anonymised real exceptions with analyst labels.
+
+**Small open item:** in run 2 every row, including the 5 "Needs analyst" rows, was marked "high" confidence, although v2 says to use "low" with "Needs analyst". The agent reads "high" as "highly confident this needs an analyst". Not dangerous, but confidence is less informative again. Possible fix later: drop confidence for "Needs analyst", or define it as "confidence in the root cause".
+
+**Q: The second run got 100%. Why not just report 100%?**
+Because the two runs differ, and the honest number covers both. Reporting your best run is cherry-picking; interviewers who know evals will ask how many times you ran it.
+
+**Q: Why did row 10436 change between runs?**
+LLM outputs vary slightly from run to run. For a borderline case (it took 4 tool calls and in run 1 decided the evidence wasn't strong enough), that variation can flip the answer. That's why we measure over multiple runs, and why the "Needs analyst" safety net matters.
+
+**Q: Is the agent "done"?**
+For this dataset, yes: accuracy and safety are where they need to be. Remaining improvements are efficiency (36–40% of rows still take extra steps) and testing on harder, messier data.
+
+---
+
+## Decision: embeddings (planned, then skipped based on evals)
+**Plan (Stage 2/4):** keep keyword search as a baseline; add embeddings if evals showed retrieval was weak.
+**What evals showed:** amendment recall 100% with keyword search in both v2 runs. The only serious failure (confidently wrong amendments) was **reasoning**, fixed by the v2 prompt and guardrail, not retrieval.
+**Decision:** don't add embeddings now. They'd add an API dependency, cost and code with no measurable gain on this data.
+**When I'd add them:** real treaties (long, paraphrased wording, many endorsements). I'd use hybrid search (keywords for exact terms and codes, embeddings for meaning) and evaluate retrieval separately: "is the right clause in the top 3?"
+
+**Q: Why didn't you use embeddings? Isn't that standard RAG?**
+"I planned it as a measured upgrade. Evals showed keyword retrieval already found 100% of amendment clauses; the failures were in reasoning, so I fixed that instead. I don't add complexity that doesn't move the numbers. On real treaties I'd add hybrid search and evaluate retrieval on its own."

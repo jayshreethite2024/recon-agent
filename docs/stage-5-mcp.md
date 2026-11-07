@@ -104,3 +104,19 @@ Restart Claude Desktop, then ask: *"Using recon-tools, check whether company cod
 | Why is `submit_finding` not on the server? | It's the agent's output format, not a data tool. Other clients don't need it. |
 | stdio vs HTTP? | stdio = server runs locally as a child process; simplest. HTTP = remote/shared server, needs auth. Production would likely be HTTP. |
 | What are the risks of MCP in a bank? | A server is a new access point to data: needs auth, access control, logging and read-only tools. Ours are read-only lookups by design. |
+
+---
+
+## Results
+| Check | Result |
+|---|---|
+| `tests/test_mcp.py` | 20/20 passed: discovery, same results as local tools, agent loop through MCP |
+| 50-row eval with `TOOL_SOURCE=mcp` | **50/50 = 100%**, 5/5 unclear escalated, 0 confidently wrong, 1.8 tool calls/row, 7.5 s/row |
+| Tokens per row | ~4,190 in vs ~3,800 with local tools |
+
+**Why more tokens through MCP?** The tool menu Gemini sees is built from the server's schemas, which carry a little extra (e.g. "title" fields and longer docstrings) compared with the hand-written local menu. It's sent on every call, so it adds up. A possible tidy-up: strip unneeded schema fields in `_to_gemini`.
+
+**Combined v2 total (local ×2 + MCP ×1):** 149/150 = 99.3%, 15/15 unclear rows escalated, 0 confidently wrong in 150 investigations.
+
+**Q: How do you prove MCP didn't change behaviour?**
+Two levels: unit-level equivalence (16 checks that MCP returns exactly what the local functions return) and system-level: the same 50-row eval gave the same accuracy and safety.

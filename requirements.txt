@@ -2,3 +2,4 @@ duckdb
 google-genai
 python-dotenv
 mcp
+streamlit
