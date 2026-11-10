@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recon Exception Investigator &mdash; Case Study</title>
+<meta name="description" content="Case study: an AI agent that investigates unclassified reinsurance reconciliation exceptions and suggests root causes with evidence for analyst approval.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter+Tight:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #f8f8f8;
+  --surface2: #f2f2f2;
+  --border: #e5e5e5;
+  --amber: #D97706;
+  --amber-light: #FEF3C7;
+  --amber-mid: #F59E0B;
+  --blue: #1D4ED8;
+  --blue-light: #EFF6FF;
+  --text: #111111;
+  --muted: #6B7280;
+  --light: #374151;
+  --green: #059669;
+  --green-light: #ECFDF5;
+  --red: #DC2626;
+  --red-light: #FEF2F2;
+  --border-strong: #d1d1d1;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-x: hidden;
+}
+
+/* NAV */
+nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  padding: 0 32px;
+}
+.nav-inner {
+  max-width: 1080px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px;
+}
+.nav-logo {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800; font-size: 14px;
+  color: var(--text); text-decoration: none;
+  letter-spacing: -0.3px;
+}
+.nav-logo span { color: var(--amber); }
+.nav-links { display: flex; gap: 24px; list-style: none; }
+.nav-links a {
+  font-size: 12px; font-weight: 500;
+  color: var(--muted); text-decoration: none;
+  letter-spacing: 0.3px;
+  transition: color 0.15s;
+}
+.nav-links a:hover { color: var(--text); }
+
+/* HERO */
+.hero {
+  padding: 120px 32px 80px;
+  max-width: 1080px; margin: 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.hero-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 24px;
+}
+.hero-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: clamp(24px, 3.5vw, 44px);
+  font-weight: 800;
+  letter-spacing: -3px;
+  line-height: 0.95;
+  margin-bottom: 24px;
+  color: var(--text);
+}
+.hero-title em {
+  font-style: normal;
+  color: var(--amber);
+}
+.hero-sub {
+  font-size: 16px; font-weight: 400;
+  color: var(--light);
+  max-width: 100%;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+/* STAT ROW */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0;
+  margin-bottom: 40px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 100%;
+}
+.stat-cell {
+  padding: 20px 28px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+.stat-cell:last-child { border-right: none; }
+.stat-main {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.stat-main .amber { color: var(--amber); }
+.stat-main .green { color: var(--green); }
+.stat-main .red { color: var(--red); }
+.stat-sublabel {
+  font-size: 11px; color: var(--muted); font-weight: 500;
+  line-height: 1.4;
+}
+.arrow-connector {
+  font-size: 16px; color: var(--muted);
+  display: inline-block; margin: 0 4px;
+}
+
+/* HERO META */
+.hero-meta {
+  display: flex; flex-wrap: wrap; gap: 24px;
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+.meta-pair { display: flex; flex-direction: column; gap: 2px; }
+.meta-key {
+  font-size: 10px; font-weight: 600;
+  color: var(--muted); letter-spacing: 1px; text-transform: uppercase;
+}
+.meta-val { font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* BADGES */
+.badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 32px; }
+.badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--light);
+}
+
+/* BTNS */
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-p {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--text); color: #fff;
+  font-size: 13px; font-weight: 600;
+  padding: 11px 22px; border-radius: 8px;
+  text-decoration: none; transition: opacity 0.15s;
+}
+.btn-p:hover { opacity: 0.85; }
+.btn-s {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--bg); color: var(--text);
+  font-size: 13px; font-weight: 600;
+  padding: 11px 22px; border-radius: 8px;
+  text-decoration: none;
+  border: 1px solid var(--border-strong);
+  transition: border-color 0.15s;
+}
+.btn-s:hover { border-color: var(--text); }
+
+/* PAGE WRAPPER */
+.page { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+
+/* SECTION */
+.section {
+  padding: 72px 0;
+  border-bottom: 1px solid var(--border);
+}
+.section:last-child { border-bottom: none; }
+
+.eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  color: var(--amber);
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.sec-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: clamp(20px, 2.5vw, 26px);
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+.sec-title em { font-style: normal; color: var(--amber); }
+.sec-lead {
+  font-size: 16px; color: var(--light);
+  max-width: 100%; line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+/* CARDS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+@media(max-width:680px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+}
+.card-amber { border-top: 3px solid var(--amber); }
+.card-green { border-top: 3px solid var(--green); }
+.card-red { border-top: 3px solid var(--red); }
+.card-blue { border-top: 3px solid var(--blue); }
+.card-label {
+  font-size: 10px; font-weight: 700;
+  color: var(--muted); letter-spacing: 1.5px;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.card-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 15px; font-weight: 700;
+  margin-bottom: 8px; line-height: 1.3;
+}
+.card p { font-size: 13px; color: var(--light); line-height: 1.65; }
+
+/* THREE CHECKS */
+.check-num {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 48px; font-weight: 800;
+  color: #D1D5DB;
+  line-height: 1; margin-bottom: 8px;
+  letter-spacing: -2px;
+}
+.check-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 18px; font-weight: 800;
+  margin-bottom: 8px; letter-spacing: -0.5px;
+}
+.check-tick {
+  display: inline-block;
+  width: 20px; height: 20px;
+  background: var(--green);
+  border-radius: 50%;
+  color: white; font-size: 11px;
+  text-align: center; line-height: 20px;
+  font-weight: 700; margin-bottom: 12px;
+}
+
+/* RISK TABLE */
+.risk-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.risk-table th {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted);
+  text-align: left; padding: 8px 16px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.risk-table td {
+  font-size: 13px; color: var(--light);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.risk-table td:first-child {
+  font-weight: 600; color: var(--text);
+  white-space: nowrap;
+}
+.risk-table tr:last-child td { border-bottom: none; }
+
+/* ARCHITECTURE */
+.arch {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  margin: 32px 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.arch-node {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 12px;
+  color: var(--light);
+  text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.arch-node.gate {
+  background: var(--amber-light);
+  border: 2px solid var(--amber);
+  color: #92400E;
+  font-weight: 700;
+}
+.arch-arrow {
+  text-align: center;
+  font-size: 18px;
+  color: var(--muted);
+  padding: 6px 0;
+  display: block;
+}
+.arch-sublabel {
+  font-size: 10px; color: var(--muted);
+  text-align: center; margin: -4px 0 4px;
+}
+
+/* SCREENSHOTS */
+.screenshot-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 24px; }
+@media(max-width:600px) { .screenshot-grid { grid-template-columns: 1fr; } }
+.screenshot-ph {
+  background: var(--surface);
+  border: 2px dashed var(--border-strong);
+  border-radius: 10px;
+  aspect-ratio: 16/10;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+}
+.screenshot-ph p { font-size: 11px; color: var(--muted); text-align: center; font-family: 'JetBrains Mono', monospace; }
+
+/* ITERATION TIMELINE &mdash; signature element */
+.timeline { margin: 40px 0; position: relative; }
+.timeline-line {
+  position: absolute;
+  top: 28px; left: 28px; right: 28px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--red) 0%, var(--amber-mid) 50%, var(--green) 100%);
+  z-index: 0;
+}
+.timeline-cols {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 16px;
+  position: relative; z-index: 1;
+}
+@media(max-width:640px) {
+  .timeline-line { display: none; }
+  .timeline-cols { grid-template-columns: 1fr; }
+}
+.ver-block { display: flex; flex-direction: column; align-items: center; }
+.ver-dot {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 14px; font-weight: 800;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.v1 .ver-dot { color: var(--red); border-color: var(--red); }
+.v2 .ver-dot { color: var(--amber); border-color: var(--amber-mid); }
+.v3 .ver-dot { color: var(--green); border-color: var(--green); }
+.ver-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+}
+.v1 .ver-card { border-top: 3px solid var(--red); }
+.v2 .ver-card { border-top: 3px solid var(--amber-mid); }
+.v3 .ver-card { border-top: 3px solid var(--green); }
+.ver-stack {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  margin-bottom: 4px; letter-spacing: 0.3px;
+}
+.ver-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 14px; font-weight: 700;
+  margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.ver-card p { font-size: 12px; color: var(--light); line-height: 1.6; margin-bottom: 10px; }
+.ver-result {
+  font-size: 11px; padding: 8px 10px;
+  border-radius: 6px; line-height: 1.5;
+}
+.v1 .ver-result, .v2 .ver-result {
+  background: var(--red-light); color: #991B1B;
+}
+.v3 .ver-result {
+  background: var(--green-light); color: #065F46;
+}
+.ver-result-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; margin-bottom: 2px;
+  font-family: 'JetBrains Mono', monospace; display: block;
+}
+
+/* PIVOT */
+.pivot {
+  background: var(--amber-light);
+  border: 1px solid #FCD34D;
+  border-left: 4px solid var(--amber);
+  border-radius: 0 10px 10px 0;
+  padding: 24px 28px;
+  margin: 32px 0;
+}
+.pivot p {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 500;
+  color: #92400E; line-height: 1.6;
+  letter-spacing: 0px;
+}
+.pivot span { display: block; font-size: 12px; color: var(--amber); margin-top: 8px; font-family: 'Inter', sans-serif; font-weight: 500; }
+
+/* CALLOUT */
+.callout {
+  background: var(--surface);
+  border-left: 4px solid var(--border-strong);
+  padding: 18px 24px;
+  margin: 24px 0;
+  font-size: 14px; color: var(--light);
+  line-height: 1.6; font-style: italic;
+  border-radius: 0 8px 8px 0;
+}
+
+/* DECISIONS */
+.decision-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--amber);
+  letter-spacing: 0.5px; margin-bottom: 6px;
+}
+.decision-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 14px; font-weight: 700;
+  margin-bottom: 8px; line-height: 1.3; letter-spacing: -0.3px;
+}
+
+/* OUTCOMES */
+.outcomes-hero {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+@media(max-width:600px) { .outcomes-hero { grid-template-columns: 1fr; } }
+.outcome-cell {
+  padding: 32px 28px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+.outcome-cell:last-child { border-right: none; }
+.outcome-num {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 44px; font-weight: 800;
+  letter-spacing: -2px; line-height: 1;
+  margin-bottom: 4px;
+  color: var(--amber);
+}
+.outcome-sub { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+/* BEFORE AFTER */
+.before-after {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+}
+.ba-before {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 26px; font-weight: 800;
+  color: var(--red); letter-spacing: -1px;
+}
+.ba-arrow { font-size: 18px; color: var(--muted); }
+.ba-after {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 26px; font-weight: 800;
+  color: var(--green); letter-spacing: -1px;
+}
+
+/* OUTCOMES QUAL */
+.outcomes-qual { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media(max-width:600px) { .outcomes-qual { grid-template-columns: 1fr; } }
+.oq-card {
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px;
+  display: flex; gap: 14px;
+}
+.oq-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+.oq-card strong { display: block; font-size: 13px; margin-bottom: 4px; }
+.oq-card p { font-size: 12px; color: var(--light); line-height: 1.55; }
+
+/* LEARNINGS */
+.learning {
+  display: flex; gap: 24px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+.learning:last-child { border-bottom: none; }
+.learning-n {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 36px; font-weight: 800;
+  color: var(--border-strong);
+  line-height: 1; flex-shrink: 0;
+  width: 40px; letter-spacing: -1px;
+}
+.learning-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 15px; font-weight: 700;
+  margin-bottom: 6px; letter-spacing: -0.3px;
+}
+.learning p { font-size: 13px; color: var(--light); line-height: 1.65; }
+
+/* FOOTER */
+footer {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 56px 32px;
+  text-align: center;
+}
+.footer-inner { max-width: 1080px; margin: 0 auto; }
+.footer-name {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 20px; font-weight: 800;
+  letter-spacing: -0.5px; margin-bottom: 4px;
+}
+.footer-role { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+.footer-links {
+  display: flex; justify-content: center;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 24px;
+}
+.footer-links a {
+  font-size: 13px; font-weight: 500;
+  color: var(--light); text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px; transition: border-color 0.15s;
+}
+.footer-links a:hover { border-color: var(--text); color: var(--text); }
+.footer-stack { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.footer-conf { font-size: 11px; color: var(--muted); margin-top: 8px; font-style: italic; }
+
+/* FADE */
+.fade { opacity: 0; transform: translateY(20px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.fade.in { opacity: 1; transform: none; }
+
+@media(max-width:768px) {
+  .nav-links { display: none; }
+  .hero { padding-top: 90px; }
+  .stat-row { grid-template-columns: 1fr; }
+  .stat-cell { border-right: none; border-bottom: 1px solid var(--border); }
+  .stat-cell:last-child { border-bottom: none; }
+  .outcomes-hero { grid-template-columns: 1fr; }
+  .outcome-cell { border-right: none; border-bottom: 1px solid var(--border); }
+  .outcome-cell:last-child { border-bottom: none; }
+}
+
+/* additions for this page */
+.risk-table td:first-child { white-space: normal; }
+/* own colour scheme: teal instead of amber */
+:root {
+  --amber: #0F766E;        /* accent text, eyebrows, em */
+  --amber-light: #F0FDFA;  /* soft accent background */
+  --amber-mid: #14B8A6;    /* accent borders */
+}
+.pivot { border-color: #99F6E4; border-left-color: var(--amber); }
+.pivot p { color: #134E4A; }
+.arch-node.gate { color: #134E4A; }
+/* keep word gaps visible when the title shrinks */
+.hero-title { letter-spacing: -1.5px; line-height: 1.05; }
+.sec-title { letter-spacing: -0.8px; }
+/* phones: stack the stat tiles (the inline 4-column style would otherwise win) */
+@media(max-width:768px) {
+  .stat-row { grid-template-columns: 1fr 1fr !important; }
+  .stat-cell { border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="nav-logo" href="#">Recon <span>Exception Investigator</span></a>
+    <ul class="nav-links">
+      <li><a href="#problem">Problem</a></li>
+      <li><a href="#user">User</a></li>
+      <li><a href="#product">Product</a></li>
+      <li><a href="#decisions">Decisions</a></li>
+      <li><a href="#evals">Evaluation</a></li>
+      <li><a href="#tradeoffs">Trade-offs</a></li>
+      <li><a href="#learnings">Learnings</a></li>
+      <li><a href="#next">Next</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div style="max-width:1080px;margin:0 auto;padding:0 32px;">
+<section class="hero" style="padding-left:0;padding-right:0;">
+  <div class="hero-tag">Portfolio Project &middot; 2026 &middot; Agentic AI</div>
+  <h1 class="hero-title">Recon Exception <em>Investigator</em></h1>
+  <p class="hero-sub">An AI agent that investigates unclassified reinsurance reconciliation exceptions the way an analyst would &mdash; and suggests a root cause with evidence. The analyst always makes the final call.</p>
+  <div class="stat-row" style="grid-template-columns:repeat(4,1fr);max-width:900px;">
+    <div class="stat-cell">
+      <div class="stat-main"><span class="amber">99.3%</span></div>
+      <div class="stat-sublabel">Root-cause accuracy across 150 evaluated cases</div>
+    </div>
+    <div class="stat-cell">
+      <div class="before-after"><span class="ba-before">2</span><span class="ba-arrow">&rarr;</span><span class="ba-after">0</span></div>
+      <div class="stat-sublabel">Confidently-wrong answers after eval-driven fixes</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-main">15/15</div>
+      <div class="stat-sublabel">Unclear cases correctly escalated to an analyst</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-main" style="color:#059669;">~7s</div>
+      <div class="stat-sublabel">Per exception, with every step explained</div>
+    </div>
+  </div>
+  <div class="hero-meta">
+    <div class="meta-pair"><span class="meta-key">Role</span><span class="meta-val">Product Manager &amp; Builder (self-initiated)</span></div>
+    <div class="meta-pair"><span class="meta-key">Context</span><span class="meta-val">Reinsurance reconciliation &middot; synthetic data</span></div>
+    <div class="meta-pair"><span class="meta-key">Status</span><span class="meta-val">Live demo</span></div>
+  </div>
+  <div class="badge-row">
+    <span class="badge">Agentic AI</span><span class="badge">Gemini function calling</span><span class="badge">MCP</span>
+    <span class="badge">LLM Evals</span><span class="badge">Guardrails</span><span class="badge">DuckDB</span><span class="badge">Streamlit</span>
+  </div>
+  <div class="btn-row">
+    <a href="https://ri-recon-agent.streamlit.app/" target="_blank" class="btn-p">&#9654; Try the Live Demo</a>
+    <a href="https://github.com/jayshreethite2024/recon-agent" class="btn-s" target="_blank">&#128279; GitHub Repository</a>
+  </div>
+</section>
+</div>
+
+<div class="page">
+
+<section class="section fade" id="problem">
+  <div class="eyebrow">01 &mdash; The Problem</div>
+  <h2 class="sec-title">Every cycle, the <em>same</em> exceptions.</h2>
+  <p class="sec-lead">A rule-based reconciliation labels most rows automatically. The rows no rule can explain are left <em>Unclassified</em> &mdash; and analysts investigate each one by hand before the control can sign off.</p>
+  <div class="grid-2">
+    <div class="card card-amber">
+      <div class="card-label">Context</div>
+      <div class="card-title">Expected vs. actual, every transaction</div>
+      <p>Each cycle, the recon compares expected ceded amounts (gross &times; treaty share) with what was actually posted, and labels rows: matched, in error, in retention, and so on.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">The Gap</div>
+      <div class="card-title">Unclassified rows need manual work</div>
+      <p>When no rule explains a variance, the row is left blank. An analyst has to dig through postings, codes and treaty documents to find out why &mdash; every cycle.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Why It Hurts</div>
+      <div class="card-title">The same causes keep coming back</div>
+      <p>Mistyped company codes, postings that land a cycle late, treaty amendments not reflected in the system. The know-how lives in analysts' heads, not in a system.</p>
+    </div>
+    <div class="card card-red">
+      <div class="card-label">The Constraint</div>
+      <div class="card-title">It's a financial control</div>
+      <p>Any AI help must be explainable and auditable, and must never decide on its own. A confident wrong answer is worse than no answer at all.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section fade" id="user">
+  <div class="eyebrow">02 &mdash; User &amp; Goal</div>
+  <h2 class="sec-title">Start from <em>evidence</em>, not from zero.</h2>
+  <p class="sec-lead">The goal isn't to replace the analyst. It's to hand them a pre-investigated row with the facts already gathered.</p>
+  <div class="grid-3" style="margin-bottom:32px;">
+    <div class="card">
+      <div class="card-label">Primary User</div>
+      <div class="card-title">Recon analyst</div>
+      <p>Clears Unclassified rows each cycle under time pressure, before downstream sign-off.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Job To Be Done</div>
+      <div class="card-title">"Show me why"</div>
+      <p>Give me the most likely cause and the facts behind it, so I can confirm or correct it quickly.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Non-Goal</div>
+      <div class="card-title">Autonomous decisions</div>
+      <p>The agent suggests; the analyst decides. Nothing is closed automatically.</p>
+    </div>
+  </div>
+  <div style="font-family:'Inter Tight',sans-serif;font-size:14px;font-weight:700;margin-bottom:12px;">How success is measured</div>
+  <table class="risk-table">
+    <thead><tr><th>Metric</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Accuracy &amp; per-cause precision</td><td>Can analysts trust each label the agent gives?</td></tr>
+      <tr><td>Confidently-wrong answers</td><td>Target zero &mdash; the failure most likely to slip past a busy reviewer</td></tr>
+      <tr><td>Unclear cases escalated</td><td>Honest "Needs analyst" instead of a guess</td></tr>
+      <tr><td>Tool calls, time &amp; tokens per row</td><td>Speed and cost at cycle volume</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section fade" id="product">
+  <div class="eyebrow">03 &mdash; The Product</div>
+  <h2 class="sec-title">An investigator. <em>Not</em> a chatbot.</h2>
+  <p class="sec-lead">It runs on every Unclassified row automatically &mdash; no prompts to write. For each row it decides which checks to run, reads the results, and submits a finding.</p>
+  <div class="arch">
+    <div class="arch-node">Unclassified row &mdash; expected, actual, variance, treaty, company code</div>
+    <span class="arch-arrow">&darr;</span>
+    <div class="arch-node">Agent picks a tool and says why &rarr; reads the result &rarr; decides next step (max 6)</div>
+    <div class="arch-sublabel">postings &middot; company code &middot; treaty setup &middot; treaty document</div>
+    <span class="arch-arrow">&darr;</span>
+    <div class="arch-node">Finding: root cause from a fixed list + evidence + confidence</div>
+    <span class="arch-arrow">&darr;</span>
+    <div class="arch-node gate">GUARDRAIL &mdash; code check on the riskiest label</div>
+    <span class="arch-arrow">&darr;</span>
+    <div class="arch-node">Analyst accepts or corrects &mdash; the decision is final</div>
+  </div>
+  <table class="risk-table">
+    <thead><tr><th>Tool the agent can call</th><th>What it reveals</th></tr></thead>
+    <tbody>
+      <tr><td>get_outbound_postings</td><td>Posted in a later cycle (timing difference) or posted twice (duplicate)</td></tr>
+      <tr><td>check_reference_code</td><td>Invalid company code, and the valid code it was likely mistyped from</td></tr>
+      <tr><td>get_treaty_terms</td><td>The treaty as set up in the system: share %, contract period</td></tr>
+      <tr><td>search_treaty</td><td>What the treaty document says, including endorsements that changed terms</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">Possible findings: company code not mapped, timing difference, variance just beyond tolerance, treaty amendment not reflected, duplicate posting &mdash; or Needs analyst. The same tools are also served over MCP, so other AI apps can reuse them.</div>
+</section>
+
+<section class="section fade" id="decisions">
+  <div class="eyebrow">04 &mdash; Key Product Decisions</div>
+  <h2 class="sec-title">Six decisions that made it <em>trustworthy</em>.</h2>
+  <div class="grid-2">
+    <div class="card"><div class="decision-num">DECISION 01</div><div class="decision-title">Narrow tools, not "run any SQL"</div><p>Four specific lookups are safer, auditable and easy to evaluate. A free SQL tool could run wrong or expensive queries.</p></div>
+    <div class="card"><div class="decision-num">DECISION 02</div><div class="decision-title">"Needs analyst" is a valid answer</div><p>For a financial control, honest uncertainty beats a confident guess. It's tracked as a safety metric, not a failure.</p></div>
+    <div class="card"><div class="decision-num">DECISION 03</div><div class="decision-title">Structured answer, not free text</div><p>The final answer is a tool with a fixed list of causes, evidence and confidence &mdash; measurable and consistent.</p></div>
+    <div class="card"><div class="decision-num">DECISION 04</div><div class="decision-title">Every step says why</div><p>Each tool call carries a one-line reason. Analysts see how it reached the answer, and every run leaves an audit trail.</p></div>
+    <div class="card"><div class="decision-num">DECISION 05</div><div class="decision-title">Cut what adds no evidence</div><p>I removed an error/retention tool on review: the recon already checks it, so it never found anything new. Fewer tools, better choices.</p></div>
+    <div class="card"><div class="decision-num">DECISION 06</div><div class="decision-title">The human always decides</div><p>The agent never closes a row. Accept/correct decisions become labels for monitoring and future improvement.</p></div>
+  </div>
+</section>
+
+<section class="section fade" id="evals">
+  <div class="eyebrow">05 &mdash; Evaluation</div>
+  <h2 class="sec-title">Accuracy <em>wasn't</em> the real problem.</h2>
+  <p class="sec-lead">A test set of 50 Unclassified rows with known root causes &mdash; including 5 deliberately unclear cases where the right answer is "Needs analyst". Every run measures accuracy, per-cause precision and recall, confidence calibration, tool calls, cost and latency.</p>
+  <div class="outcomes-hero">
+    <div class="outcome-cell"><div class="before-after"><span class="ba-before">96%</span><span class="ba-arrow">&rarr;</span><span class="ba-after">99.3%</span></div><div class="outcome-sub">Accuracy, baseline vs. v2 (149/150 over 3 runs)</div></div>
+    <div class="outcome-cell"><div class="before-after"><span class="ba-before">2</span><span class="ba-arrow">&rarr;</span><span class="ba-after">0</span></div><div class="outcome-sub">Confidently-wrong answers</div></div>
+    <div class="outcome-cell"><div class="before-after"><span class="ba-before">3/5</span><span class="ba-arrow">&rarr;</span><span class="ba-after">15/15</span></div><div class="outcome-sub">Unclear cases escalated to an analyst</div></div>
+  </div>
+  <table class="risk-table" style="margin-bottom:24px;">
+    <thead><tr><th>Metric</th><th>v1 baseline</th><th>v2 + guardrail (3 runs)</th></tr></thead>
+    <tbody>
+      <tr><td>Amendment precision</td><td>82%</td><td>100%</td></tr>
+      <tr><td>Tool calls per row</td><td>2.2</td><td>1.8</td></tr>
+      <tr><td>Seconds per row</td><td>9.1</td><td>~7.3</td></tr>
+      <tr><td>Via MCP server</td><td>&mdash;</td><td>50/50, same as local tools</td></tr>
+    </tbody>
+  </table>
+  <div class="pivot">
+    <p>What 96% hid: both errors were unclear cases labelled "treaty amendment" with high confidence. Reading the traces, the agent's own evidence said no endorsement existed &mdash; and it labelled the row an amendment anyway.</p>
+    <span>My first hypothesis (a misleading search result) was wrong. It was a reasoning failure, not a retrieval one.</span>
+  </div>
+  <div class="grid-2">
+    <div class="card card-amber"><div class="card-label">Fix 1</div><div class="card-title">Stricter prompt</div><p>An amendment now needs an endorsement clause and numbers that match. A self-check before submitting, and defined confidence levels.</p></div>
+    <div class="card card-green"><div class="card-label">Fix 2</div><div class="card-title">Code guardrail</div><p>If the agent says "amendment" but never retrieved an endorsement, code overrides it to "Needs analyst". Prompts can be ignored; code can't.</p></div>
+  </div>
+  <div class="callout">I re-ran the same 50 cases three times &mdash; once through the MCP server &mdash; to make sure the result was stable, not a lucky run.</div>
+</section>
+
+<section class="section fade" id="tradeoffs">
+  <div class="eyebrow">06 &mdash; Trade-offs &amp; Limits</div>
+  <h2 class="sec-title">What I chose <em>not</em> to do.</h2>
+  <div class="grid-2">
+    <div class="card"><div class="card-label">Cost</div><div class="card-title">Safety over tokens</div><p>The v2 prompt is longer (+11% input tokens). Worth it to remove confidently-wrong answers.</p></div>
+    <div class="card"><div class="card-label">Retrieval</div><div class="card-title">No embeddings, yet</div><p>Planned as an upgrade, but evals showed keyword retrieval found 100% of amendment clauses. The failures were in reasoning, so I fixed that instead.</p></div>
+    <div class="card"><div class="card-label">Architecture</div><div class="card-title">No agent framework</div><p>A single agent with a simple loop is easier to debug and audit in plain code. I'd move to LangGraph for multi-agent handoffs or mid-run approvals.</p></div>
+    <div class="card card-red"><div class="card-label">Limits</div><div class="card-title">Synthetic data</div><p>Five planted causes, one cause per row, 50 cases. Real exceptions are messier. The next proof point is anonymised real exceptions with analyst labels.</p></div>
+  </div>
+</section>
+
+<section class="section fade" id="learnings">
+  <div class="eyebrow">07 &mdash; PM Learnings</div>
+  <h2 class="sec-title">What this taught me about <em>AI products</em>.</h2>
+  <div>
+    <div class="learning"><div class="learning-n">1</div><div><div class="learning-title">The kind of error matters more than the error rate</div><p>96% looked good until I saw both errors were confident and wrong. Define the dangerous failure first, then measure it.</p></div></div>
+    <div class="learning"><div class="learning-n">2</div><div><div class="learning-title">Read failures before fixing them</div><p>My first guess about the cause was wrong. Fixing on assumption would have targeted the wrong thing.</p></div></div>
+    <div class="learning"><div class="learning-n">3</div><div><div class="learning-title">Design for "I don't know"</div><p>Giving the agent an honest way out made it safer and more useful, not less.</p></div></div>
+    <div class="learning"><div class="learning-n">4</div><div><div class="learning-title">Layer your controls</div><p>A prompt shapes behaviour; a code guardrail enforces it. Finance has always worked this way.</p></div></div>
+    <div class="learning"><div class="learning-n">5</div><div><div class="learning-title">Measure, then decide</div><p>Evals told me to skip embeddings and to use the cheaper, faster model. Neither was my starting assumption.</p></div></div>
+  </div>
+</section>
+
+<section class="section fade" id="next">
+  <div class="eyebrow">08 &mdash; What's Next</div>
+  <h2 class="sec-title">From demo to <em>control</em>.</h2>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">Real-data pilot</div><p>Anonymised exceptions with analyst labels; track accept rate and time per row.</p></div>
+    <div class="card"><div class="card-title">Labels &rarr; ML classifier</div><p>Accepted and corrected findings train a cheaper model for the common patterns.</p></div>
+    <div class="card"><div class="card-title">Patterns &rarr; rules</div><p>Reliable patterns graduate into deterministic recon rules, shrinking the Unclassified bucket.</p></div>
+    <div class="card"><div class="card-title">Messier cases</div><p>Multiple causes per row, an "Other" category, and hybrid search for long treaties.</p></div>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-name">Jayshree Thite</div>
+    <div class="footer-role">Senior Consultant at Deloitte &mdash; transitioning to Data &amp; AI PM roles</div>
+    <div class="footer-links">
+      <a href="https://ri-recon-agent.streamlit.app/" target="_blank">&#9654; Live Demo</a>
+      <a href="https://github.com/jayshreethite2024/recon-agent" target="_blank">&#128279; GitHub Repository</a>
+      <a href="https://www.linkedin.com/in/jayshreethite-1998/" target="_blank">LinkedIn</a>
+      <a href="https://mail.google.com/mail/?view=cm&to=jayshreethite.career@gmail.com" target="_blank">Email</a>
+    </div>
+    <div class="footer-stack">Python &middot; Gemini &middot; MCP &middot; DuckDB &middot; Streamlit</div>
+    <div class="footer-conf">Built on fully synthetic data &mdash; no client names, codes or data.</div>
+  </div>
+</footer>
+
+<script>
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); obs.unobserve(e.target); }});
+}, {threshold: 0.08});
+document.querySelectorAll('.fade').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>
