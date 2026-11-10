@@ -2,6 +2,8 @@
 
 An AI agent that investigates **Unclassified** reconciliation exceptions the way an analyst would: it checks postings, validates codes, compares the system's treaty setup with the treaty document, and suggests a **root cause with evidence**. An analyst accepts or corrects it. The agent never closes a row on its own.
 
+**▶ Live demo: [ri-recon-agent.streamlit.app](https://ri-recon-agent.streamlit.app/)**
+
 > Built on **fully synthetic data**. No client names, codes or data.
 
 ![Architecture](docs/architecture.png)
